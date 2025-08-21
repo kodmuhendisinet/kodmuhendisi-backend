@@ -2,87 +2,58 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import compression from "compression";
-import rateLimit from "express-rate-limit";
-import { serverConfig } from "./config/server";
+import morgan from "morgan";
 import { connectDatabase } from "./config/database";
-import { errorHandler } from "./middleware/errorHandler";
-import { notFound } from "./middleware/notFound";
+import logger from "./config/logger";
+import authRoutes from "./routes/auth";
 import healthRoutes from "./routes/health";
+import { errorHandler } from "./middlewares/errorHandler";
 
 const app = express();
 
-// Güvenlik middleware'leri
+// Middleware'ler
 app.use(helmet());
 app.use(
   cors({
-    origin: serverConfig.corsOrigins,
+    origin: process.env["FRONTEND_URL"] || "http://localhost:3000",
     credentials: true,
   })
 );
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 dakika
-  max: 100, // IP başına maksimum 100 istek
-  message: "Çok fazla istek gönderildi, lütfen daha sonra tekrar deneyin.",
-});
-app.use("/api/", limiter);
-
-// Body parsing middleware
+app.use(
+  morgan("combined", {
+    stream: { write: (message) => logger.info(message.trim()) },
+  })
+);
 app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-// Compression
-app.use(compression());
+app.use(express.urlencoded({ extended: true }));
 
 // Routes
+app.use("/api/auth", authRoutes);
 app.use("/api/health", healthRoutes);
 
-// Ana route
-app.get("/", (req, res) => {
-  res.json({
-    message: "Markaflow V3 Backend API",
-    version: "3.0.0",
-    status: "running",
+// Error handling
+app.use(errorHandler);
+
+// 404 handler
+app.use("*", (_req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Endpoint bulunamadı",
   });
 });
 
-// 404 handler
-app.use(notFound);
+const PORT = process.env["PORT"] || 5000;
 
-// Error handler (en sonda olmalı)
-app.use(errorHandler);
-
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("SIGTERM signal received: closing HTTP server");
-  process.exit(0);
-});
-
-process.on("SIGINT", () => {
-  console.log("SIGINT signal received: closing HTTP server");
-  process.exit(0);
-});
-
-// Sunucuyu başlat
 const startServer = async () => {
   try {
-    // Veritabanına bağlan
     await connectDatabase();
-
-    // Sunucuyu dinlemeye başla
-    app.listen(serverConfig.port, () => {
-      console.log(`🚀 Server running on port ${serverConfig.port}`);
-      console.log(`📊 Environment: ${serverConfig.nodeEnv}`);
-      console.log(`🌐 URL: http://localhost:${serverConfig.port}`);
+    app.listen(PORT, () => {
+      logger.info(`Server ${PORT} portunda çalışıyor`);
     });
   } catch (error) {
-    console.error("❌ Server başlatılamadı:", error);
+    logger.error("Server başlatma hatası:", error);
     process.exit(1);
   }
 };
 
 startServer();
-
-export default app;

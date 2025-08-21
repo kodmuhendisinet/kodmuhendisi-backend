@@ -5,6 +5,9 @@ dotenv.config();
 export const serverConfig = {
   port: process.env["PORT"] || 5000,
   nodeEnv: process.env["NODE_ENV"] || "development",
+  corsOrigins: process.env["CORS_ORIGINS"]?.split(",") || [
+    "http://localhost:3000",
+  ],
 
   jwtSecret: process.env["JWT_SECRET"] || "a23Yi43643RzP5e7Yhdfs6SiYu9z",
   jwtExpiresIn: process.env["JWT_EXPIRES_IN"] || "365d",
